@@ -2,7 +2,7 @@
 
 A tmux plugin that manages dedicated [OpenCode](https://opencode.ai) and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions per working directory. Pure shell -- no build step, no runtime dependencies beyond tmux and bash.
 
-Press a leader key followed by a tool key from any tmux pane. The plugin opens (or reuses) a window running that tool in your current working directory inside a background session. Press the same combo again to jump back.
+Press `Alt-q` from any tmux pane to toggle OpenCode in your current working directory. The plugin opens (or reuses) a window running the tool inside a background session. Press `Alt-q` again to jump back. Optionally enable a leader key for multi-tool access.
 
 ## Requirements
 
@@ -44,31 +44,23 @@ tmux source-file ~/.tmux.conf
 
 | Keys | Action |
 |---|---|
-| `Alt-q` | Toggle OpenCode for current directory (direct, no leader) |
-| `Ctrl-o` then `o` | Toggle OpenCode for current directory |
-| `Ctrl-o` then `p` | Toggle Claude Code for current directory |
+| `Alt-q` | Toggle OpenCode for current directory |
 
-Pressing the same combo while focused on the tool window switches back to your previous session.
+Only `Alt-q` is registered by default. The leader key and per-tool sub-keys are available but must be explicitly enabled (see below).
+
+Pressing `Alt-q` while focused on the tool window switches back to your previous session.
 
 ## Configuration
 
 All options are set in `~/.tmux.conf` via tmux user options. Place them **before** the plugin line.
 
-### Leader key
+### Quick key (primary keybinding)
+
+`Alt-q` is the only keybinding registered by default. It opens OpenCode directly with a single keypress.
 
 ```tmux
-set -g @tcsm-leader 'C-space'    # default: C-o
-```
-
-Any valid tmux key name works (`C-a`, `C-space`, `M-s`, etc.).
-
-### Quick key (direct access, no leader)
-
-A single keypress that opens a tool directly -- no leader key needed.
-
-```tmux
-set -g @tcsm-quickkey 'M-q'           # default: M-q (Alt-q)
-set -g @tcsm-quickkey-tool 'opencode'  # default: first tool in @tcsm-tools
+set -g @tcsm-quickkey 'M-o'             # change to Alt-o (default: M-q)
+set -g @tcsm-quickkey-tool 'claudecode'  # open Claude Code instead (default: opencode)
 ```
 
 Set `@tcsm-quickkey` to an empty string to disable:
@@ -77,7 +69,15 @@ Set `@tcsm-quickkey` to an empty string to disable:
 set -g @tcsm-quickkey ''
 ```
 
-### Tool keybindings
+### Leader key (optional, disabled by default)
+
+Enable a leader key to access multiple tools via `<leader> <tool-key>`:
+
+```tmux
+set -g @tcsm-leader 'C-o'    # not set by default
+```
+
+### Tool keybindings (used with leader key)
 
 ```tmux
 set -g @tcsm-opencode-key 'o'    # default: o
@@ -101,7 +101,7 @@ set -g @tcsm-aider-key 'a'
 set -g @tcsm-aider-cmd 'aider'
 ```
 
-Reload tmux and the new tool is available at `leader + a`.
+Reload tmux and the new tool is available at `leader + a` (requires `@tcsm-leader` to be set).
 
 If you omit `-key`, the first character of the tool name is used.
 If you omit `-cmd`, the tool name itself is used as the command.
@@ -110,9 +110,9 @@ If you omit `-cmd`, the tool name itself is used as the command.
 
 ```tmux
 # -- claude-session-manager config --
-set -g @tcsm-leader 'C-space'
-set -g @tcsm-quickkey 'M-q'
-set -g @tcsm-quickkey-tool 'opencode'
+set -g @tcsm-quickkey 'M-q'              # default, shown for clarity
+set -g @tcsm-quickkey-tool 'opencode'     # default, shown for clarity
+set -g @tcsm-leader 'C-space'            # opt-in: enable leader key
 set -g @tcsm-tools 'opencode,claudecode,aider'
 set -g @tcsm-opencode-key 'o'
 set -g @tcsm-claudecode-key 'c'
@@ -129,7 +129,7 @@ run '~/.tmux/plugins/tpm/tpm'
 ## How it works
 
 1. On tmux startup, the plugin creates a detached session called `claude-session-manager`.
-2. When you press `leader + tool key`, `scripts/toggle.sh` runs:
+2. When you press `Alt-q` (or `leader + tool key` if configured), `scripts/toggle.sh` runs:
    - If you are already in the `claude-session-manager` session, it calls `switch-client -l` to return to your previous session.
    - Otherwise it iterates over windows in the manager session, checking `@tcsm_tool` and `@tcsm_cwd` window options to find a match.
    - If a matching window exists, it switches to it. If not, it creates a new window running the tool command in your working directory and tags it.

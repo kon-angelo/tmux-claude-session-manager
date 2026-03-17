@@ -46,16 +46,15 @@ default_cmd_for() {
 # Read configuration
 # -----------------------------------------------------------------
 
-leader=$(get_tmux_option "@tcsm-leader" 'C-o')
+leader=$(get_tmux_option "@tcsm-leader" '')
 tools=$(get_tmux_option "@tcsm-tools" "opencode,claudecode")
 
 # Quick-key: a single key in the root table that opens a tool directly
-# (no leader required). Set to empty string to disable.
+# (no leader required). This is the primary keybinding registered by default.
+# Set to empty string to disable.
 quickkey=$(get_tmux_option "@tcsm-quickkey" 'M-q')
-# Which tool the quick-key opens (defaults to the first tool in the list).
-IFS=',' read -ra _qk_tmp <<< "$tools"
-quickkey_tool=$(get_tmux_option "@tcsm-quickkey-tool" "${_qk_tmp[0]// /}")
-unset _qk_tmp
+# Which tool the quick-key opens (defaults to opencode).
+quickkey_tool=$(get_tmux_option "@tcsm-quickkey-tool" "opencode")
 
 # -----------------------------------------------------------------
 # Ensure the background management session exists
@@ -91,25 +90,27 @@ while IFS= read -r line; do
 done < <(tmux list-keys -T tcsm 2>/dev/null)
 
 # -----------------------------------------------------------------
-# Bind the leader key to enter the plugin key table
+# Bind the leader key to enter the plugin key table (optional).
+# The leader key is not registered by default. Set @tcsm-leader to
+# enable it (e.g. C-o). When enabled, per-tool keys are bound in
+# the tcsm key table so that <leader> <key> opens a tool.
 # -----------------------------------------------------------------
 
-tmux bind-key -T root "$leader" switch-client -T tcsm
+if [ -n "$leader" ]; then
+    tmux bind-key -T root "$leader" switch-client -T tcsm
 
-# -----------------------------------------------------------------
-# For each tool, bind its key in the tcsm key table
-# -----------------------------------------------------------------
+    # For each tool, bind its key in the tcsm key table.
+    IFS=',' read -ra tool_list <<< "$tools"
+    for tool in "${tool_list[@]}"; do
+        tool=$(echo "$tool" | tr -d ' ')   # trim whitespace
+        [ -z "$tool" ] && continue
 
-IFS=',' read -ra tool_list <<< "$tools"
-for tool in "${tool_list[@]}"; do
-    tool=$(echo "$tool" | tr -d ' ')   # trim whitespace
-    [ -z "$tool" ] && continue
+        key=$(get_tmux_option "@tcsm-${tool}-key" "$(default_key_for "$tool")")
 
-    key=$(get_tmux_option "@tcsm-${tool}-key" "$(default_key_for "$tool")")
-
-    tmux bind-key -T tcsm "$key" \
-        run-shell "$TOGGLE $tool '#{pane_current_path}' '#{session_name}'"
-done
+        tmux bind-key -T tcsm "$key" \
+            run-shell "$TOGGLE $tool '#{pane_current_path}' '#{session_name}'"
+    done
+fi
 
 # -----------------------------------------------------------------
 # Bind the quick-key directly in the root table (no leader needed)

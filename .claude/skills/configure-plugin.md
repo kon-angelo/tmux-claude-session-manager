@@ -20,7 +20,9 @@ tmux-claude-session-manager is a TPM plugin written in pure bash. It manages a d
 
 ### How keybindings work
 
-The plugin creates a custom tmux key table called `tcsm`. The leader key (bound in the `root` table) switches into this table. Each tool key is bound inside `tcsm` and calls:
+By default, only a single **quick-key** (`Alt-q` / `M-q`) is registered. It directly calls `toggle.sh` to open OpenCode for the caller's working directory. The quick-key's key and tool are configurable via `@tcsm-quickkey` and `@tcsm-quickkey-tool`.
+
+Optionally, users can enable a **leader key** (`@tcsm-leader`). When set, the plugin creates a custom tmux key table called `tcsm`. The leader key (bound in the `root` table) switches into this table. Each tool key is bound inside `tcsm` and calls:
 
 ```
 scripts/toggle.sh <tool> '#{pane_current_path}' '#{session_name}'
@@ -40,9 +42,9 @@ Each managed window has two window-level options:
 
 | tmux option | Default | Description |
 |---|---|---|
-| `@tcsm-leader` | `C-o` | Leader key to enter the plugin key table |
+| `@tcsm-leader` | *(empty)* | Leader key to enter the plugin key table (disabled by default) |
 | `@tcsm-quickkey` | `M-q` | Direct key to open a tool (no leader needed). Empty to disable. |
-| `@tcsm-quickkey-tool` | first tool | Which tool the quick-key opens |
+| `@tcsm-quickkey-tool` | `opencode` | Which tool the quick-key opens |
 | `@tcsm-tools` | `opencode,claudecode` | Comma-separated list of tool names |
 | `@tcsm-<tool>-key` | first char of tool name | Key for the tool (after leader) |
 | `@tcsm-<tool>-cmd` | tool name | Shell command to launch the tool |
@@ -52,6 +54,8 @@ Built-in defaults for the two shipped tools:
 - `claudecode`: key `p`, command `claude`
 
 ## How to change the leader key
+
+The leader key is disabled by default. Enable it to access multiple tools via `<leader> <tool-key>`:
 
 Edit `~/.tmux.conf`:
 
