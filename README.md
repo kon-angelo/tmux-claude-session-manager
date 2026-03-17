@@ -44,6 +44,7 @@ tmux source-file ~/.tmux.conf
 
 | Keys | Action |
 |---|---|
+| `Alt-q` | Toggle OpenCode for current directory (direct, no leader) |
 | `Ctrl-o` then `o` | Toggle OpenCode for current directory |
 | `Ctrl-o` then `p` | Toggle Claude Code for current directory |
 
@@ -60,6 +61,21 @@ set -g @tcsm-leader 'C-space'    # default: C-o
 ```
 
 Any valid tmux key name works (`C-a`, `C-space`, `M-s`, etc.).
+
+### Quick key (direct access, no leader)
+
+A single keypress that opens a tool directly -- no leader key needed.
+
+```tmux
+set -g @tcsm-quickkey 'M-q'           # default: M-q (Alt-q)
+set -g @tcsm-quickkey-tool 'opencode'  # default: first tool in @tcsm-tools
+```
+
+Set `@tcsm-quickkey` to an empty string to disable:
+
+```tmux
+set -g @tcsm-quickkey ''
+```
 
 ### Tool keybindings
 
@@ -95,6 +111,8 @@ If you omit `-cmd`, the tool name itself is used as the command.
 ```tmux
 # -- claude-session-manager config --
 set -g @tcsm-leader 'C-space'
+set -g @tcsm-quickkey 'M-q'
+set -g @tcsm-quickkey-tool 'opencode'
 set -g @tcsm-tools 'opencode,claudecode,aider'
 set -g @tcsm-opencode-key 'o'
 set -g @tcsm-claudecode-key 'c'

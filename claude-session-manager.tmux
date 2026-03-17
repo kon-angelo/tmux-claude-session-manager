@@ -49,6 +49,14 @@ default_cmd_for() {
 leader=$(get_tmux_option "@tcsm-leader" 'C-o')
 tools=$(get_tmux_option "@tcsm-tools" "opencode,claudecode")
 
+# Quick-key: a single key in the root table that opens a tool directly
+# (no leader required). Set to empty string to disable.
+quickkey=$(get_tmux_option "@tcsm-quickkey" 'M-q')
+# Which tool the quick-key opens (defaults to the first tool in the list).
+IFS=',' read -ra _qk_tmp <<< "$tools"
+quickkey_tool=$(get_tmux_option "@tcsm-quickkey-tool" "${_qk_tmp[0]// /}")
+unset _qk_tmp
+
 # -----------------------------------------------------------------
 # Ensure the background management session exists
 # -----------------------------------------------------------------
@@ -69,6 +77,12 @@ while IFS= read -r line; do
     key=$(echo "$line" | awk '{print $4}' | sed 's/\\\\/\\/g')
     [ -n "$key" ] && tmux unbind-key -T root "$key" 2>/dev/null || true
 done < <(tmux list-keys -T root 2>/dev/null | grep 'switch-client -T tcsm')
+
+# Remove root-table quick-key bindings (those that call toggle.sh directly).
+while IFS= read -r line; do
+    key=$(echo "$line" | awk '{print $4}' | sed 's/\\\\/\\/g')
+    [ -n "$key" ] && tmux unbind-key -T root "$key" 2>/dev/null || true
+done < <(tmux list-keys -T root 2>/dev/null | grep "toggle\.sh")
 
 # Wipe the entire tcsm key table so stale tool bindings don't linger.
 while IFS= read -r line; do
@@ -96,3 +110,12 @@ for tool in "${tool_list[@]}"; do
     tmux bind-key -T tcsm "$key" \
         run-shell "$TOGGLE $tool '#{pane_current_path}' '#{session_name}'"
 done
+
+# -----------------------------------------------------------------
+# Bind the quick-key directly in the root table (no leader needed)
+# -----------------------------------------------------------------
+
+if [ -n "$quickkey" ]; then
+    tmux bind-key -T root "$quickkey" \
+        run-shell "$TOGGLE $quickkey_tool '#{pane_current_path}' '#{session_name}'"
+fi

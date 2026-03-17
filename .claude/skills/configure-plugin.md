@@ -41,6 +41,8 @@ Each managed window has two window-level options:
 | tmux option | Default | Description |
 |---|---|---|
 | `@tcsm-leader` | `C-o` | Leader key to enter the plugin key table |
+| `@tcsm-quickkey` | `M-q` | Direct key to open a tool (no leader needed). Empty to disable. |
+| `@tcsm-quickkey-tool` | first tool | Which tool the quick-key opens |
 | `@tcsm-tools` | `opencode,claudecode` | Comma-separated list of tool names |
 | `@tcsm-<tool>-key` | first char of tool name | Key for the tool (after leader) |
 | `@tcsm-<tool>-cmd` | tool name | Shell command to launch the tool |
@@ -58,6 +60,21 @@ set -g @tcsm-leader 'C-space'
 ```
 
 Reload: `tmux source-file ~/.tmux.conf`
+
+## How to change or disable the quick-key
+
+The quick-key opens a tool with a single keypress (no leader). Default: `M-q` (Alt+q) opens `opencode`.
+
+```tmux
+set -g @tcsm-quickkey 'M-o'             # change to Alt+o
+set -g @tcsm-quickkey-tool 'claudecode'  # open Claude Code instead
+```
+
+To disable the quick-key entirely:
+
+```tmux
+set -g @tcsm-quickkey ''
+```
 
 ## How to change a tool keybinding
 
