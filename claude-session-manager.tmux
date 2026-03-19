@@ -52,7 +52,7 @@ tools=$(get_tmux_option "@tcsm-tools" "opencode,claudecode")
 # Quick-key: a single key in the root table that opens a tool directly
 # (no leader required). This is the primary keybinding registered by default.
 # Set to empty string to disable.
-quickkey=$(get_tmux_option "@tcsm-quickkey" 'M-q')
+quickkey=$(get_tmux_option "@tcsm-quickkey" 'M-t')
 # Which tool the quick-key opens (defaults to opencode).
 quickkey_tool=$(get_tmux_option "@tcsm-quickkey-tool" "opencode")
 
