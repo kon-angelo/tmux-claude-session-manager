@@ -16,8 +16,36 @@ CURRENT_SESSION="${3:?Usage: toggle.sh <tool> <cwd> <session>}"
 
 # -------------------------------------------------------------------
 # If already in the manager session, go back to the previous session.
+# Try to select the window in the target session whose CWD matches
+# the current managed window, so the user lands in the right context.
 # -------------------------------------------------------------------
 if [ "$CURRENT_SESSION" = "$SESSION_NAME" ]; then
+    # Get the CWD associated with this managed window.
+    current_win_id=$(tmux display-message -p '#{window_id}')
+    target_cwd=$(tmux show-options -wqv -t "$current_win_id" @tcsm_cwd 2>/dev/null || true)
+    : "${target_cwd:=$CURRENT_CWD}"
+
+    # Determine which session to return to (requires tmux >= 3.1).
+    last_session=$(tmux display-message -p '#{client_last_session}')
+
+    # Find a window in the target session with a pane matching this CWD.
+    if [ -n "$target_cwd" ] && [ -n "$last_session" ]; then
+        match=$(tmux list-panes -s -t "$last_session" \
+            -F '#{window_id} #{pane_current_path}' 2>/dev/null | \
+            while IFS= read -r line; do
+                win_id="${line%% *}"
+                pane_path="${line#* }"
+                if [ "$pane_path" = "$target_cwd" ]; then
+                    echo "$win_id"
+                    break
+                fi
+            done)
+
+        if [ -n "$match" ]; then
+            tmux select-window -t "$match"
+        fi
+    fi
+
     tmux switch-client -l
     exit 0
 fi
