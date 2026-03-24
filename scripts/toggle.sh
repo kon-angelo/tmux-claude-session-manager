@@ -15,22 +15,32 @@ CURRENT_CWD="${2:?Usage: toggle.sh <tool> <cwd> <session>}"
 CURRENT_SESSION="${3:?Usage: toggle.sh <tool> <cwd> <session>}"
 
 # -------------------------------------------------------------------
-# If already in the manager session, go back to the previous session.
+# If already in the manager session, go back to the source session.
+# Use the explicitly stored @tcsm_source_session rather than
+# switch-client -l, which is unreliable from run-shell context.
 # Try to select the window in the target session whose CWD matches
 # the current managed window, so the user lands in the right context.
 # -------------------------------------------------------------------
 if [ "$CURRENT_SESSION" = "$SESSION_NAME" ]; then
-    # Get the CWD associated with this managed window.
+    # Get the CWD and source session associated with this managed window.
     current_win_id=$(tmux display-message -p '#{window_id}')
     target_cwd=$(tmux show-options -wqv -t "$current_win_id" @tcsm_cwd 2>/dev/null || true)
     : "${target_cwd:=$CURRENT_CWD}"
+    source_session=$(tmux show-options -wqv -t "$current_win_id" @tcsm_source_session 2>/dev/null || true)
 
-    # Determine which session to return to (requires tmux >= 3.1).
-    last_session=$(tmux display-message -p '#{client_last_session}')
+    # Fall back to tmux's last-session tracking (requires tmux >= 3.1).
+    if [ -z "$source_session" ]; then
+        source_session=$(tmux display-message -p '#{client_last_session}')
+    fi
+
+    if [ -z "$source_session" ]; then
+        # Nothing to return to.
+        exit 0
+    fi
 
     # Find a window in the target session with a pane matching this CWD.
-    if [ -n "$target_cwd" ] && [ -n "$last_session" ]; then
-        match=$(tmux list-panes -s -t "$last_session" \
+    if [ -n "$target_cwd" ]; then
+        match=$(tmux list-panes -s -t "$source_session" \
             -F '#{window_id} #{pane_current_path}' 2>/dev/null | \
             while IFS= read -r line; do
                 win_id="${line%% *}"
@@ -46,7 +56,7 @@ if [ "$CURRENT_SESSION" = "$SESSION_NAME" ]; then
         fi
     fi
 
-    tmux switch-client -l
+    tmux switch-client -t "$source_session"
     exit 0
 fi
 
@@ -88,16 +98,24 @@ if [ -z "$target_window" ]; then
     fi
 
     base=$(basename "$CURRENT_CWD")
+    # Create window with a shell (not the tool directly) so that job
+    # control works — Ctrl-Z can suspend the tool and return to the shell.
     target_window=$(tmux new-window -t "$SESSION_NAME" \
         -n "${TOOL_NAME}:${base}" \
         -c "$CURRENT_CWD" \
-        -d -P -F '#{window_id}' \
-        "$tool_cmd")
+        -d -P -F '#{window_id}')
+    tmux send-keys -t "$target_window" "$tool_cmd" Enter
 
     # Tag the window for later lookup.
     tmux set-option -w -t "$target_window" @tcsm_tool "$TOOL_NAME"
     tmux set-option -w -t "$target_window" @tcsm_cwd "$CURRENT_CWD"
 fi
+
+# -------------------------------------------------------------------
+# Remember which session (and window) we came from so the toggle-back
+# can return to the right place without relying on switch-client -l.
+# -------------------------------------------------------------------
+tmux set-option -w -t "$target_window" @tcsm_source_session "$CURRENT_SESSION"
 
 # -------------------------------------------------------------------
 # Focus the target window and switch the client to the manager session.
