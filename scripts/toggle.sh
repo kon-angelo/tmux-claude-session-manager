@@ -70,18 +70,41 @@ fi
 # -------------------------------------------------------------------
 # Look for an existing window matching this tool + working directory.
 # Each managed window is tagged with @tcsm_tool and @tcsm_cwd options.
+#
+# First try an exact CWD match.  If none is found, fall back to the
+# most specific (longest path) parent directory that already has a
+# window for this tool — so calling tcsm from a subdirectory of an
+# existing session reuses that session instead of creating a new one.
 # -------------------------------------------------------------------
 target_window=""
+best_parent_window=""
+best_parent_cwd=""
 window_ids=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}' 2>/dev/null || true)
 
 for window_id in $window_ids; do
     w_tool=$(tmux show-options -wqv -t "$window_id" @tcsm_tool 2>/dev/null || true)
     w_cwd=$(tmux show-options -wqv -t "$window_id" @tcsm_cwd 2>/dev/null || true)
-    if [ "$w_tool" = "$TOOL_NAME" ] && [ "$w_cwd" = "$CURRENT_CWD" ]; then
-        target_window="$window_id"
-        break
+    if [ "$w_tool" = "$TOOL_NAME" ]; then
+        if [ "$w_cwd" = "$CURRENT_CWD" ]; then
+            target_window="$window_id"
+            break
+        fi
+        # Check if CWD is a subdirectory of this window's directory.
+        case "$CURRENT_CWD" in
+            "$w_cwd"/*)
+                if [ -z "$best_parent_cwd" ] || [ ${#w_cwd} -gt ${#best_parent_cwd} ]; then
+                    best_parent_window="$window_id"
+                    best_parent_cwd="$w_cwd"
+                fi
+                ;;
+        esac
     fi
 done
+
+# Fall back to the most specific parent directory match.
+if [ -z "$target_window" ] && [ -n "$best_parent_window" ]; then
+    target_window="$best_parent_window"
+fi
 
 # -------------------------------------------------------------------
 # Create a new window if none was found.
