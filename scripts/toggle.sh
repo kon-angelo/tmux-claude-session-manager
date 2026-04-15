@@ -33,6 +33,53 @@ if [ -z "$SESSION_NAME" ]; then
 fi
 
 # -------------------------------------------------------------------
+# Collect all managed session names so we can distinguish them from
+# normal user sessions.  This is used to skip over managed sessions
+# when resolving the "back" target.
+# -------------------------------------------------------------------
+declare -A MANAGED_SESSIONS
+collect_managed_session() {
+    local tool="$1"
+    local s
+    s=$(tmux show-options -gqv "@tcsm-${tool}-session" 2>/dev/null || true)
+    [ -z "$s" ] && s=$(default_session_for "$tool")
+    MANAGED_SESSIONS["$s"]=1
+}
+
+# Always include the well-known defaults.
+MANAGED_SESSIONS["claude-session-manager"]=1
+MANAGED_SESSIONS["nvim-session-manager"]=1
+
+# Include sessions for all configured tools.
+configured_tools=$(tmux show-options -gqv "@tcsm-tools" 2>/dev/null || true)
+: "${configured_tools:=opencode,claudecode}"
+IFS=',' read -ra _tool_list <<< "$configured_tools"
+for _t in "${_tool_list[@]}"; do
+    _t=$(echo "$_t" | tr -d ' ')
+    [ -n "$_t" ] && collect_managed_session "$_t"
+done
+
+# Include the quickkey tool.
+qk_tool=$(tmux show-options -gqv "@tcsm-quickkey-tool" 2>/dev/null || true)
+: "${qk_tool:=opencode}"
+collect_managed_session "$qk_tool"
+
+# Include extra-quickkey tools.
+extra_qk=$(tmux show-options -gqv "@tcsm-extra-quickkeys" 2>/dev/null || true)
+if [ -n "$extra_qk" ]; then
+    IFS=',' read -ra _eq_list <<< "$extra_qk"
+    for _pair in "${_eq_list[@]}"; do
+        _pair=$(echo "$_pair" | tr -d ' ')
+        _eq_tool="${_pair%%:*}"
+        [ -n "$_eq_tool" ] && collect_managed_session "$_eq_tool"
+    done
+fi
+
+is_managed_session() {
+    [ -n "${MANAGED_SESSIONS[$1]+_}" ]
+}
+
+# -------------------------------------------------------------------
 # If already in the target managed session, go back to the source
 # session. Use the explicitly stored @tcsm_source_session rather than
 # switch-client -l, which is unreliable from run-shell context.
@@ -55,6 +102,24 @@ if [ "$CURRENT_SESSION" = "$SESSION_NAME" ]; then
         # Nothing to return to.
         exit 0
     fi
+
+    # Follow the source-session chain past any managed sessions so we
+    # always land in a normal user session, not another tool session.
+    _depth=0
+    while is_managed_session "$source_session" && [ $_depth -lt 10 ]; do
+        _depth=$((_depth + 1))
+        # Find the source session stored on the active window of that
+        # managed session.
+        _active_win=$(tmux display-message -t "$source_session" -p '#{window_id}' 2>/dev/null || true)
+        _next=""
+        if [ -n "$_active_win" ]; then
+            _next=$(tmux show-options -wqv -t "$_active_win" @tcsm_source_session 2>/dev/null || true)
+        fi
+        if [ -z "$_next" ] || [ "$_next" = "$source_session" ]; then
+            break  # avoid infinite loops; use what we have
+        fi
+        source_session="$_next"
+    done
 
     # Find a window in the target session with a pane matching this CWD.
     if [ -n "$target_cwd" ]; then
@@ -156,8 +221,33 @@ fi
 # -------------------------------------------------------------------
 # Remember which session (and window) we came from so the toggle-back
 # can return to the right place without relying on switch-client -l.
+#
+# If we are switching from one managed session to another, propagate
+# the original non-managed source session instead of storing the
+# intermediate managed session.
 # -------------------------------------------------------------------
-tmux set-option -w -t "$target_window" @tcsm_source_session "$CURRENT_SESSION"
+resolved_source="$CURRENT_SESSION"
+if is_managed_session "$resolved_source"; then
+    # We are in a managed session — look up its stored source to find
+    # the original user session.
+    _src_win=$(tmux display-message -p '#{window_id}' 2>/dev/null || true)
+    _depth=0
+    while is_managed_session "$resolved_source" && [ $_depth -lt 10 ]; do
+        _depth=$((_depth + 1))
+        _prev=""
+        if [ -n "$_src_win" ]; then
+            _prev=$(tmux show-options -wqv -t "$_src_win" @tcsm_source_session 2>/dev/null || true)
+        fi
+        if [ -z "$_prev" ] || [ "$_prev" = "$resolved_source" ]; then
+            break
+        fi
+        # Before following the chain, resolve the active window of the
+        # next session so we can read its source.
+        _src_win=$(tmux display-message -t "$_prev" -p '#{window_id}' 2>/dev/null || true)
+        resolved_source="$_prev"
+    done
+fi
+tmux set-option -w -t "$target_window" @tcsm_source_session "$resolved_source"
 
 # -------------------------------------------------------------------
 # Focus the target window and switch the client to the manager session.
