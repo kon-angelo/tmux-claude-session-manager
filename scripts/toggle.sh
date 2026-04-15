@@ -3,20 +3,38 @@
 #
 # Usage: toggle.sh <tool> <cwd> <session>
 #
-# If the caller is already in the manager session, switches back.
+# If the caller is already in a managed session, switches back.
 # Otherwise finds or creates a window for the tool+cwd pair and switches to it.
+#
+# Each tool can use its own tmux session via the @tcsm-<tool>-session option.
+# Tools without a custom session use "claude-session-manager" by default.
 
 set -euo pipefail
 
-SESSION_NAME="claude-session-manager"
+DEFAULT_SESSION="claude-session-manager"
 
 TOOL_NAME="${1:?Usage: toggle.sh <tool> <cwd> <session>}"
 CURRENT_CWD="${2:?Usage: toggle.sh <tool> <cwd> <session>}"
 CURRENT_SESSION="${3:?Usage: toggle.sh <tool> <cwd> <session>}"
 
 # -------------------------------------------------------------------
-# If already in the manager session, go back to the source session.
-# Use the explicitly stored @tcsm_source_session rather than
+# Resolve the session name for this tool.
+# -------------------------------------------------------------------
+default_session_for() {
+    case "$1" in
+        nvim) echo "nvim-session-manager" ;;
+        *)    echo "$DEFAULT_SESSION" ;;
+    esac
+}
+
+SESSION_NAME=$(tmux show-options -gqv "@tcsm-${TOOL_NAME}-session" 2>/dev/null || true)
+if [ -z "$SESSION_NAME" ]; then
+    SESSION_NAME=$(default_session_for "$TOOL_NAME")
+fi
+
+# -------------------------------------------------------------------
+# If already in the target managed session, go back to the source
+# session. Use the explicitly stored @tcsm_source_session rather than
 # switch-client -l, which is unreliable from run-shell context.
 # Try to select the window in the target session whose CWD matches
 # the current managed window, so the user lands in the right context.
@@ -116,6 +134,7 @@ if [ -z "$target_window" ]; then
         case "$TOOL_NAME" in
             opencode)   tool_cmd="opencode" ;;
             claudecode) tool_cmd="claude" ;;
+            nvim)       tool_cmd="nvim" ;;
             *)          tool_cmd="$TOOL_NAME" ;;
         esac
     fi

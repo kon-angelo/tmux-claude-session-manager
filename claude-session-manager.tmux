@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # claude-session-manager.tmux - TPM entry point.
 #
-# Sourced by TPM on tmux startup. Sets up the management session and
+# Sourced by TPM on tmux startup. Sets up the management session(s) and
 # keybindings. No build step required -- pure shell.
 
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,6 +29,7 @@ default_key_for() {
     case "$1" in
         opencode)   echo "o" ;;
         claudecode) echo "p" ;;
+        nvim)       echo "v" ;;
         *)          echo "${1:0:1}" ;;  # first character
     esac
 }
@@ -38,7 +39,16 @@ default_cmd_for() {
     case "$1" in
         opencode)   echo "opencode" ;;
         claudecode) echo "claude" ;;
+        nvim)       echo "nvim" ;;
         *)          echo "$1" ;;
+    esac
+}
+
+# Return the default session name for a built-in tool name.
+default_session_for() {
+    case "$1" in
+        nvim) echo "nvim-session-manager" ;;
+        *)    echo "claude-session-manager" ;;
     esac
 }
 
@@ -56,12 +66,54 @@ quickkey=$(get_tmux_option "@tcsm-quickkey" 'M-t')
 # Which tool the quick-key opens (defaults to opencode).
 quickkey_tool=$(get_tmux_option "@tcsm-quickkey-tool" "opencode")
 
+# Additional quick-keys: comma-separated list of tool:key pairs.
+# Example: "nvim:M-v,aider:M-a"
+# These are bound in addition to the single @tcsm-quickkey above.
+extra_quickkeys=$(get_tmux_option "@tcsm-extra-quickkeys" '')
+
 # -----------------------------------------------------------------
-# Ensure the background management session exists
+# Ensure the background management sessions exist.
+# Each tool can use its own session via @tcsm-<tool>-session.
 # -----------------------------------------------------------------
 
-if ! tmux has-session -t "claude-session-manager" 2>/dev/null; then
-    tmux new-session -d -s "claude-session-manager"
+# Collect all unique session names that need to exist.
+declare -A seen_sessions
+all_tools="$tools"
+
+# Include the quickkey tool and any extra-quickkey tools in the session list.
+ensure_session() {
+    local tool="$1"
+    local session
+    session=$(get_tmux_option "@tcsm-${tool}-session" "$(default_session_for "$tool")")
+    if [ -z "${seen_sessions[$session]+_}" ]; then
+        seen_sessions["$session"]=1
+        if ! tmux has-session -t "$session" 2>/dev/null; then
+            tmux new-session -d -s "$session"
+        fi
+    fi
+}
+
+# Ensure sessions for all configured tools.
+IFS=',' read -ra tool_list <<< "$all_tools"
+for tool in "${tool_list[@]}"; do
+    tool=$(echo "$tool" | tr -d ' ')
+    [ -z "$tool" ] && continue
+    ensure_session "$tool"
+done
+
+# Ensure session for the quickkey tool.
+if [ -n "$quickkey" ] && [ -n "$quickkey_tool" ]; then
+    ensure_session "$quickkey_tool"
+fi
+
+# Ensure sessions for extra quickkey tools.
+if [ -n "$extra_quickkeys" ]; then
+    IFS=',' read -ra eq_list <<< "$extra_quickkeys"
+    for pair in "${eq_list[@]}"; do
+        pair=$(echo "$pair" | tr -d ' ')
+        eq_tool="${pair%%:*}"
+        [ -n "$eq_tool" ] && ensure_session "$eq_tool"
+    done
 fi
 
 # -----------------------------------------------------------------
@@ -119,4 +171,23 @@ fi
 if [ -n "$quickkey" ]; then
     tmux bind-key -T root "$quickkey" \
         run-shell "$TOGGLE $quickkey_tool '#{pane_current_path}' '#{session_name}'"
+fi
+
+# -----------------------------------------------------------------
+# Bind extra quick-keys directly in the root table.
+# Format: "tool:key,tool:key,..."  e.g. "nvim:M-v,aider:M-a"
+# -----------------------------------------------------------------
+
+if [ -n "$extra_quickkeys" ]; then
+    IFS=',' read -ra eq_list <<< "$extra_quickkeys"
+    for pair in "${eq_list[@]}"; do
+        pair=$(echo "$pair" | tr -d ' ')
+        [ -z "$pair" ] && continue
+        eq_tool="${pair%%:*}"
+        eq_key="${pair#*:}"
+        [ -z "$eq_tool" ] || [ -z "$eq_key" ] && continue
+
+        tmux bind-key -T root "$eq_key" \
+            run-shell "$TOGGLE $eq_tool '#{pane_current_path}' '#{session_name}'"
+    done
 fi
