@@ -117,6 +117,12 @@ if [ -n "$extra_quickkeys" ]; then
 fi
 
 # -----------------------------------------------------------------
+# Re-tag windows that lost their @tcsm_* options after a tmux server
+# restart (e.g. tmux-resurrect/tmux-continuum restore).
+# -----------------------------------------------------------------
+"$CURRENT_DIR/scripts/retag.sh"
+
+# -----------------------------------------------------------------
 # Clean up any previous bindings from this plugin.
 # Remove all keys in the tcsm table and any root-table key that
 # pointed at the tcsm table (handles leader key changes on reload).
